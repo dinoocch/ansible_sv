@@ -69,7 +69,7 @@ msg:
 
 
 import os
-
+import time
 
 class Service(object):
     platform = 'Void Linux'
@@ -139,12 +139,15 @@ class Service(object):
     def get_status(self):
         """ Get service status using sv """
 
+        if not self.get_enabled():
+            self.running = False
+            return "disabled"
         cmd = "%s status %s" % (self.sv_path, self.name)
 
         rc, stdout, stderr = self.module.run_command(cmd, check_rc=False)
 
         if rc != 0:
-            self.module.fail_json(msg=stderr)
+            self.module.fail_json(msg=stdout)
 
         status = stdout.split(":")[0]
         self.module.debug("Status %s" % status)
@@ -189,11 +192,10 @@ class Service(object):
     def do_action(self):
         if self.enable is True:
             self.do_enable()
+            if self.changed:
+                time.sleep(1)
             self.get_status()
-            if self.state == "restarted":
-                self.change_sv("restart")
-            else:
-                self.change_sv(self.state)
+            self.change_sv(self.state[:-2])
         else:
             if self.get_enabled():
                 self.change_sv("stop")
@@ -209,7 +211,7 @@ def main():
         argument_spec=dict(
             name=dict(aliases=['name', 'service']),
             state=dict(default=None, choices=['started', 'restarted',
-                                              'stopped', 'reload']),
+                                              'stopped', 'reloaded']),
             enabled=dict(default=None, type='bool')
         ),
         required_one_of=[['state', 'enabled']],
