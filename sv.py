@@ -90,43 +90,49 @@ class Service(object):
         """ Check if service is enabled.
         Returns True if link exists, False otherwise"""
 
-        src = os.path.join("var", "service", self.name)
+        src = os.path.join("/", "var", "service", self.name)
         if os.path.islink(src):
+            self.module.debug("Service is currently enabled")
             return True
         else:
+            self.module.debug("Service is currently disabled")
             return False
 
-    def enable(self):
+    def do_enable(self):
         """ Enable service by creating a symlink."""
         if self.get_enabled():
-            return True, 'Already enabled.'
+            return (True, 'Already enabled.')
 
         self.changed = True
+        self.module.debug("Would enable.")
         if self.module.check_mode:
-            return True, 'Would be enabled.'
+            return (True, 'Would be enabled.')
 
-        src = os.path.join("etc", "sv", self.name)
-        dest = os.path.join("var", "service", self.name)
+        src = os.path.join("/", "etc", "sv", self.name)
+        dest = os.path.join("/", "var", "service", self.name)
         try:
             os.symlink(src, dest)
-            return True, ''
+            self.module.debug("Enabled service")
+            return (True, '')
         except OSError, e:
             self.module.fail_json(msg=e.strerror)
 
-    def disable(self):
+    def do_disable(self):
         """ Disable service by deleting symlink """
         if not self.get_enabled():
-            return True, 'Already disabled.'
+            return (True, 'Already disabled.')
 
         self.changed = True
+        self.module.debug("Would disable.")
         if self.module.check_mode:
-            return True, 'Would be disabled.'
+            return (True, 'Would be disabled.')
 
-        src = os.path.join("var", "service", self.name)
+        src = os.path.join("/", "var", "service", self.name)
 
         try:
             os.unlink(src)
-            return True, 'Disabled.'
+            self.module.debug("Disabled service")
+            return (True, 'Disabled.')
         except OSError, e:
             self.module.fail_json(msg=e.strerror)
 
@@ -141,6 +147,7 @@ class Service(object):
             self.module.fail_json(msg=stderr)
 
         status = stdout.split(":")[0]
+        self.module.debug("Status %s" % status)
         if status not in ["run", "down"]:
             self.module.fail_json(msg="Invalid status. Will not proceed.")
         if status == "run":
@@ -173,14 +180,15 @@ class Service(object):
         elif action == "reload":
             cmd = "sv hup %s" % self.name
 
+        self.module.debug(cmd)
         rc, stdout, stderr = self.module.run_command(cmd, check_rc=False)
 
         if rc != 0:
             self.module.fail_json(msg=stderr)
 
-    def action(self):
+    def do_action(self):
         if self.enable is True:
-            self.enable()
+            self.do_enable()
             self.get_status()
             if self.state == "restarted":
                 self.change_sv("restart")
@@ -189,7 +197,7 @@ class Service(object):
         else:
             if self.get_enabled():
                 self.change_sv("stop")
-            self.disable()
+            self.do_disable()
 
 
 def main():
@@ -199,7 +207,7 @@ def main():
 
     module = AnsibleModule(
         argument_spec=dict(
-            name=dict(aliases=['name', 'service'], type='list'),
+            name=dict(aliases=['name', 'service']),
             state=dict(default=None, choices=['started', 'restarted',
                                               'stopped', 'reload']),
             enabled=dict(default=None, type='bool')
@@ -226,9 +234,8 @@ def main():
         p['state'] = "stopped"
 
     service = Service(module, sv_path)
-    service.action()
-    if service.changed:
-        module.exit_json()
+    module.debug("Service initialized.")
+    service.do_action()
 
     result = {}
     result["name"] = service.name
